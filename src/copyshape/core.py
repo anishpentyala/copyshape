@@ -12,12 +12,15 @@ class InvalidScan(ValueError):
 class Limits:
     max_entries: int = 100000
     max_depth: int = 128
+    max_path_bytes: int = 16 * 1024 * 1024
 
     def __post_init__(self):
         if type(self.max_entries) is not int or not 1 <= self.max_entries <= 1000000:
             raise InvalidScan('max_entries must be an integer in 1..1000000')
         if type(self.max_depth) is not int or not 0 <= self.max_depth <= 256:
             raise InvalidScan('max_depth must be an integer in 0..256')
+        if type(self.max_path_bytes) is not int or not 1 <= self.max_path_bytes <= 256 * 1024 * 1024:
+            raise InvalidScan('max_path_bytes must be an integer in 1..268435456')
 
 
 def _identity(info):
@@ -46,7 +49,7 @@ def scan(root, *, block_size=4096, limits=None):
             os.listdir not in os.supports_fd or os.scandir not in os.supports_fd):
         raise InvalidScan('POSIX descriptor-relative traversal is required')
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    groups, directories, counts = {}, set(), {'entries': 0, 'directories': 0, 'symlinks': 0}
+    groups, directories, counts = {}, set(), {'entries': 0, 'directories': 0, 'symlinks': 0, 'path_bytes': 0}
 
     def walk(fd, prefix, depth):
         before = os.fstat(fd)
@@ -63,6 +66,12 @@ def scan(root, *, block_size=4096, limits=None):
                     raise InvalidScan('entry limit exceeded; no capacity result')
                 name = entry.name
                 path = name if not prefix else prefix + '/' + name
+                # Count every visited relative name before stat or retention,
+                # including directories and symlinks. fsencode preserves raw
+                # POSIX filename bytes, including surrogate-escaped names.
+                counts['path_bytes'] += len(os.fsencode(path))
+                if counts['path_bytes'] > limits.max_path_bytes:
+                    raise InvalidScan('path byte limit exceeded; no capacity result')
                 info = os.stat(name, dir_fd=fd, follow_symlinks=False)
                 if stat.S_ISLNK(info.st_mode):
                     counts['symlinks'] += 1
@@ -134,6 +143,7 @@ def scan(root, *, block_size=4096, limits=None):
     allocated_known = all(row['observed_allocated_bytes'] is not None for row in rows)
     return {'schema': 1, 'status': 'MODELLED_NOT_PHYSICAL_FORECAST',
             'block_size': block_size, 'scanned_entries': counts['entries'],
+            'scanned_relative_path_bytes': counts['path_bytes'],
             'directories_below_root': counts['directories'], 'symlinks_not_followed': counts['symlinks'],
             'regular_file_names': sum(row['selected_names'] for row in rows),
             'unique_regular_files': len(rows),
