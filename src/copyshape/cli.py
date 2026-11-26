@@ -24,6 +24,8 @@ def main(argv=None):
     parser.add_argument('--block-size', type=int, default=4096, help='assumed destination allocation unit in bytes (default: 4096)')
     parser.add_argument('--max-entries', type=int, default=100000)
     parser.add_argument('--max-depth', type=int, default=128)
+    parser.add_argument('--max-path-bytes', type=int, default=16 * 1024 * 1024,
+                        help='cumulative raw relative-path bytes for all entries (default: 16777216)')
     parser.add_argument('--pool', action='append', default=[], metavar='NAME=BLOCK_BYTES', help='hypothetical destination pool; repeatable')
     parser.add_argument('--route', action='append', default=[], metavar='PREFIX=POOL', help='relative directory route; include =POOL as default')
     args = parser.parse_args(argv)
@@ -33,7 +35,7 @@ def main(argv=None):
         pools = _assignments(args.pool, numbers=True) if args.pool else None
         routes = _assignments(args.route) if args.route else None
         result = scan(args.root, block_size=args.block_size,
-                      limits=Limits(args.max_entries, args.max_depth))
+                      limits=Limits(args.max_entries, args.max_depth, args.max_path_bytes))
         if pools is not None:
             result['placement'] = plan(result, pools, routes)
         # ASCII encoding keeps newlines, terminal controls and undecodable
