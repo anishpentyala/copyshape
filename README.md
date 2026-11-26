@@ -54,7 +54,8 @@ from copyshape import Limits, scan
 from copyshape.placement import plan
 
 report = scan("./source", block_size=4096,
-              limits=Limits(max_entries=100_000, max_depth=128))
+              limits=Limits(max_entries=100_000, max_depth=128,
+                            max_path_bytes=16 * 1024 * 1024))
 placement = plan(report, {"fast": 4096, "archive": 65536},
                  {"": "fast", "archive": "archive"})
 ```
@@ -64,6 +65,7 @@ placement = plan(report, {"fast": 4096, "archive": 65536},
 ## Bounds and refusal behavior
 
 - Default scan cap: 100,000 entries including directories and skipped symlinks, and 128 directory levels below the root. Hard ceilings: 1,000,000 entries and depth 256. Limit failures return no capacity result, not a lower bound.
+- A separate cumulative path budget defaults to 16 MiB (16,777,216 bytes), configurable with `--max-path-bytes` or `Limits(max_path_bytes=...)`, with a hard ceiling of 256 MiB. Every visited relative path counts in raw filesystem-encoded bytes, including directories, symlinks and each hardlink name. Repeated directory prefixes count again for each entry. The root itself is excluded. An exact-budget scan succeeds; the first entry over budget is refused before its metadata is read. `scanned_relative_path_bytes` reports this counter on success. This is not a serialized JSON size or total memory cap: escaping and Python objects add overhead, and placement output can duplicate paths.
 - Allocation units must be integers from 1 through 1,073,741,824 bytes. These are assumptions, not filesystem auto-detection. At most 256 pools and 10,000 routes are accepted.
 - One directory root only. A final root symlink, including a trailing slash or `/.` spelling, is refused. Ancestor symlinks are resolved normally by the OS. Descendant directories are opened relative to directory descriptors with `O_NOFOLLOW`, then checked for matching device/inode identity.
 - Descendant symlinks, including broken links and cycles, are counted but not followed. Their own storage is excluded. Sockets, FIFOs and device files cause refusal rather than silently disappearing from the model. Unreadable directories and metadata errors also cause refusal.
