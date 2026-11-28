@@ -3,6 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
+readme = "README.md"
 name = "copyshape"
 version = "0.1.0"
 description = "Read-only hardlink expansion and dense-copy capacity models"
