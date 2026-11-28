@@ -47,6 +47,22 @@ The empty route supplies a default. A route matches a relative **directory prefi
 
 The added `placement` object has per-pool payload and dense models, total dense models, and each hardlink family split across pools. `cross_pool_additional_payload_bytes` measures how much extra logical payload splitting requires compared with keeping each family on one filesystem. It is not the delta in physical disk usage. Pool allocation units can differ, so dense totals are calculated per pool, not by rounding a combined total.
 
+## Compare two routing plans without rescanning
+
+Use the same hypothetical pools and allocation units for both plans. `--route` is the first plan; `--compare-route` is the second. Each must have an empty-prefix default. The scanner runs once, so source changes between two separate scans cannot masquerade as placement differences.
+
+```sh
+copyshape ./source --pool small=512 --pool big=4096 \
+  --route '=small' \
+  --compare-route '=small' --compare-route 'archive=big' > comparison.json
+```
+
+The `comparison` object reports per-pool before/after values and signed deltas (second minus first), moved file names, and source groups with moved names. Each group lists pools gaining or losing a preserved instance. A family can move between pools with no change in instance count yet change its dense model because allocation units differ. Zero-byte families can move with a zero-byte delta. Equivalent routes produce no moved names.
+
+For two selected hardlinks to one 4,097-byte file initially on a 512-byte pool, moving one name to a 4,096-byte pool adds a modeled preserved instance: total dense-preserved bytes go from 4,608 to 12,800, a delta of 8,192. The expanded-name model instead changes from 9,216 to 12,800, a delta of 3,584. The report keeps those distinct.
+
+This is a final-layout comparison on the same selected source tree. It does not simulate an actual migration, temporary double storage, copy order, bytes transferred, pre-existing destination files, or space reclaimed. Negative deltas are model reductions, not free-space guarantees. Reports include relative names from both plans and should remain private. Python callers can use `copyshape.comparison.compare(report, pools, before_routes, after_routes)` with an in-process scan result, under the same restrictions as `plan`.
+
 ## Python API
 
 ```python
