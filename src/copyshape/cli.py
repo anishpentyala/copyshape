@@ -4,6 +4,7 @@ import sys
 
 from .core import InvalidScan, Limits, scan
 from .placement import plan
+from .comparison import compare
 
 
 def _assignments(items, *, numbers=False):
@@ -28,16 +29,23 @@ def main(argv=None):
                         help='cumulative raw relative-path bytes for all entries (default: 16777216)')
     parser.add_argument('--pool', action='append', default=[], metavar='NAME=BLOCK_BYTES', help='hypothetical destination pool; repeatable')
     parser.add_argument('--route', action='append', default=[], metavar='PREFIX=POOL', help='relative directory route; include =POOL as default')
+    parser.add_argument('--compare-route', action='append', default=[], metavar='PREFIX=POOL',
+                        help='second routing plan over the same scan; requires --pool and --route, include =POOL default')
     args = parser.parse_args(argv)
     try:
         if bool(args.pool) != bool(args.route):
             raise InvalidScan('--pool and --route must be provided together')
+        if args.compare_route and not args.pool:
+            raise InvalidScan('--compare-route requires --pool and --route')
         pools = _assignments(args.pool, numbers=True) if args.pool else None
         routes = _assignments(args.route) if args.route else None
+        comparison_routes = _assignments(args.compare_route) if args.compare_route else None
         result = scan(args.root, block_size=args.block_size,
                       limits=Limits(args.max_entries, args.max_depth, args.max_path_bytes))
         if pools is not None:
             result['placement'] = plan(result, pools, routes)
+            if comparison_routes is not None:
+                result['comparison'] = compare(result, pools, routes, comparison_routes)
         # ASCII encoding keeps newlines, terminal controls and undecodable
         # POSIX names inside quoted JSON, rather than writing raw path bytes.
         sys.stdout.write(json.dumps(result, ensure_ascii=True, sort_keys=True, indent=2) + '\n')
